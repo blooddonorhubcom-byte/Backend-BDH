@@ -172,6 +172,10 @@ export const login = asyncHandler(async (req, res) => {
         throw new ApiError(StatusCodes.NOT_FOUND, NO_USER);
     }
 
+    if (!user.isVerified) {
+        throw new ApiError(StatusCodes.FORBIDDEN, "Please verify your email before logging in.");
+    }
+
     if (user.suspended) {
         throw new ApiError(StatusCodes.FORBIDDEN, "Your account has been suspended. Contact support.");
     }

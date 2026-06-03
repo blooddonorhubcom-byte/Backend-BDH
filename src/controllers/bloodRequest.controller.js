@@ -50,13 +50,24 @@ function shuffleArray(arr) {
 
 // Build a concrete UTC Date from donationDate + "HH:mm" endTime string.
 // Used to set expiresAt so cron jobs can query by a real Date field.
-function buildExpiresAt(donationDateObj, endTimeStr) {
-    const parts = String(endTimeStr).split(":");
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    if (isNaN(h) || isNaN(m)) return null;
+// If endTime is earlier than startTime (e.g. 9 PM → midnight 00:00), the
+// donation window crosses midnight so we add 1 day to the end Date.
+function buildExpiresAt(donationDateObj, startTimeStr, endTimeStr) {
+    const parseHHMM = (str) => {
+        const parts = String(str).split(":");
+        return { h: parseInt(parts[0], 10), m: parseInt(parts[1], 10) };
+    };
+    const end = parseHHMM(endTimeStr);
+    if (isNaN(end.h) || isNaN(end.m)) return null;
     const d = new Date(donationDateObj);
-    d.setHours(h, m, 0, 0);
+    d.setHours(end.h, end.m, 0, 0);
+    // Detect midnight crossing: end time is earlier than start time
+    const start = parseHHMM(startTimeStr);
+    if (!isNaN(start.h) && !isNaN(start.m)) {
+        if ((end.h * 60 + end.m) < (start.h * 60 + start.m)) {
+            d.setDate(d.getDate() + 1);
+        }
+    }
     return d;
 }
 
@@ -109,7 +120,7 @@ export const createBloodRequest = asyncHandler(async (req, res) => {
     console.log(`[BloodRequest] City broadcast: ${cityUsers.length} users in "${city}" will be notified`);
 
     const donationDateObj = new Date(donationDate);
-    const expiresAt = buildExpiresAt(donationDateObj, donationWindow.endTime);
+    const expiresAt = buildExpiresAt(donationDateObj, donationWindow.startTime, donationWindow.endTime);
 
     // Donors array starts empty — users add themselves by responding Yes to the notification
     const bloodRequest = await BloodRequest.create({

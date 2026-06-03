@@ -4,10 +4,11 @@ import { User } from "../models/user.model.js";
 import { notifyDonorConfirmation } from "../services/notification.service.js";
 
 /**
- * Parse "HH:mm" string into a Date on the same calendar day as baseDate.
+ * Parse "HH:mm" endTime into a Date on the same calendar day as baseDate.
+ * If endTime is earlier than startTime (midnight-crossing window), adds 1 day.
  * Returns null if inputs are invalid.
  */
-function parseTimeOnDate(baseDate, timeStr) {
+function parseTimeOnDate(baseDate, timeStr, startTimeStr = null) {
     if (!baseDate || !timeStr) return null;
     const parts = String(timeStr).split(":");
     const hours = parseInt(parts[0], 10);
@@ -15,6 +16,16 @@ function parseTimeOnDate(baseDate, timeStr) {
     if (isNaN(hours) || isNaN(minutes)) return null;
     const d = new Date(baseDate);
     d.setHours(hours, minutes, 0, 0);
+    if (startTimeStr) {
+        const sParts = String(startTimeStr).split(":");
+        const sh = parseInt(sParts[0], 10);
+        const sm = parseInt(sParts[1], 10);
+        if (!isNaN(sh) && !isNaN(sm)) {
+            if ((hours * 60 + minutes) < (sh * 60 + sm)) {
+                d.setDate(d.getDate() + 1);
+            }
+        }
+    }
     return d;
 }
 
@@ -35,11 +46,13 @@ async function runReminderJob(io) {
         for (const request of requests) {
             // Prefer precomputed expiresAt; fall back to parsing donationWindow
             const expiresAt = request.expiresAt
-                || parseTimeOnDate(request.donationDate, request.donationWindow?.endTime);
+                || parseTimeOnDate(request.donationDate, request.donationWindow?.endTime, request.donationWindow?.startTime);
             if (!expiresAt) continue;
 
             const reminderAt = new Date(expiresAt.getTime() - 30 * 60 * 1000);
-            if (now < reminderAt || now >= expiresAt) continue;
+            if (now < reminderAt) continue;
+            // No upper-bound check on expiresAt — reminderSent flag prevents duplicates,
+            // so a cron tick that fires slightly past the end time still delivers the notification.
 
             // Send reminder only to accepted donors who haven't been reminded yet
             const needsReminder = request.donors.filter(
@@ -98,7 +111,7 @@ async function runAutoCancelJob(io) {
 
         for (const request of requests) {
             const expiresAt = request.expiresAt
-                || parseTimeOnDate(request.donationDate, request.donationWindow?.endTime);
+                || parseTimeOnDate(request.donationDate, request.donationWindow?.endTime, request.donationWindow?.startTime);
             if (!expiresAt) continue;
 
             // Auto-cancel 2 hours after window end with no confirmed donation
