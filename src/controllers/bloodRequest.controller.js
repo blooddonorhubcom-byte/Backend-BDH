@@ -334,6 +334,64 @@ export const confirmDonation = asyncHandler(async (req, res) => {
 });
 
 
+// ─── RECEIVER MARKS A DONOR'S DONATION AS DONE ───────────────────────────────
+// PATCH /api/v1/bloodRequest/:id/mark-done
+// Allows the receiver (request creator) to confirm that a specific donor donated.
+// The donor's status moves to "completed" and the request is marked complete once
+// all required units are fulfilled.
+export const markDonationDone = asyncHandler(async (req, res) => {
+    const receiverId = req.user._id;
+    const { id } = req.params;
+    const { donorId } = req.body;
+
+    if (!mongoose.isValidObjectId(id) || !mongoose.isValidObjectId(donorId)) {
+        throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid id");
+    }
+
+    const bloodRequest = await BloodRequest.findOne({ _id: id, createdBy: receiverId });
+    if (!bloodRequest) {
+        throw new ApiError(StatusCodes.NOT_FOUND, "Request not found or not authorized");
+    }
+
+    const donorEntry = bloodRequest.donors.find(
+        (d) => String(d.donor) === String(donorId)
+    );
+    if (!donorEntry) {
+        throw new ApiError(StatusCodes.NOT_FOUND, "Donor not found in this request");
+    }
+    if (donorEntry.status !== "accepted") {
+        throw new ApiError(StatusCodes.CONFLICT, "Donor must be accepted before marking as done");
+    }
+
+    donorEntry.status = "completed";
+    donorEntry.confirmedAt = new Date();
+
+    const completedCount = bloodRequest.donors.filter((d) => d.status === "completed").length;
+    if (completedCount >= bloodRequest.requiredUnits) {
+        bloodRequest.status = "completed";
+    }
+
+    await bloodRequest.save();
+
+    const io = req.app.get("io");
+    const payload = {
+        requestId: String(bloodRequest._id),
+        donorId: String(donorId),
+        donorStatus: "completed",
+        overallStatus: bloodRequest.status,
+        event: "donation_marked_done",
+    };
+    io.to(String(receiverId)).emit("requestUpdated", payload);
+    io.to(String(donorId)).emit("requestUpdated", payload);
+
+    return res.status(StatusCodes.OK).send(
+        new ApiResponse(StatusCodes.OK, UPDATE_SUCCESS_MESSAGES, {
+            requestStatus: bloodRequest.status,
+        })
+    );
+});
+
+
 // ─── CHECK IF USER HAS AN ACTIVE REQUEST ─────────────────────────────────────
 // GET /api/v1/bloodRequest/check-active
 export const checkActiveRequest = asyncHandler(async (req, res) => {

@@ -55,25 +55,26 @@ export async function sendPushNotification(token, title, body, data = {}) {
             return;
         }
 
-        if (Array.isArray(result?.data)) {
-            result.data.forEach((ticket) => {
-                if (ticket.status === "ok") {
-                    console.log(`[Push] Ticket OK — id=${ticket.id}`);
-                } else if (ticket.status === "error") {
-                    console.error(
-                        `[Push] Ticket error — message="${ticket.message}" error=${ticket.details?.error ?? "unknown"}`,
-                        ticket.details ?? ""
-                    );
-                    if (ticket.details?.error === "DeviceNotRegistered") {
-                        clearStaleToken(token);
-                    }
-                } else {
-                    console.warn("[Push] Unexpected ticket:", JSON.stringify(ticket));
-                }
-            });
-        } else {
+        // Expo returns an array of tickets for batch sends, or a single object for one-off sends.
+        const tickets = Array.isArray(result?.data) ? result.data : (result?.data ? [result.data] : []);
+        if (tickets.length === 0) {
             console.warn("[Push] Unexpected Expo response shape:", JSON.stringify(result));
         }
+        tickets.forEach((ticket) => {
+            if (ticket.status === "ok") {
+                console.log(`[Push] Ticket OK — id=${ticket.id}`);
+            } else if (ticket.status === "error") {
+                console.error(
+                    `[Push] Ticket error — message="${ticket.message}" error=${ticket.details?.error ?? "unknown"}`,
+                    ticket.details ?? ""
+                );
+                if (ticket.details?.error === "DeviceNotRegistered") {
+                    clearStaleToken(token);
+                }
+            } else {
+                console.warn("[Push] Unexpected ticket:", JSON.stringify(ticket));
+            }
+        });
     } catch (err) {
         console.error("[Push] Network/fetch error:", err.message);
         console.error("[Push] Payload that failed:", JSON.stringify(payload));

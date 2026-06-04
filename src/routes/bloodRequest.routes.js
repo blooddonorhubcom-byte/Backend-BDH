@@ -4,6 +4,7 @@ import {
     createBloodRequest,
     respondToRequest,
     confirmDonation,
+    markDonationDone,
     getMyRequests,
     getMyAssignments,
     getAssignedBloodRequests,
@@ -27,6 +28,7 @@ bloodRequestRouter.route("/feed").get(getBloodRequestFeed);
 bloodRequestRouter.route("/:id").get(getBloodRequestById).delete(deleteBloodRequest);
 bloodRequestRouter.route("/:id/respond").patch(respondToRequest);
 bloodRequestRouter.route("/:id/confirm").patch(confirmDonation);
+bloodRequestRouter.route("/:id/mark-done").patch(markDonationDone);
 bloodRequestRouter.route("/:id/receiver-respond").patch(receiverRespondToDonor);
 
 export default bloodRequestRouter;
