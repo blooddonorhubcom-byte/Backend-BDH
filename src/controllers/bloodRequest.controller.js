@@ -79,6 +79,7 @@ export const createBloodRequest = asyncHandler(async (req, res) => {
     const {
         patientName, bloodGroup, requiredUnits, location, city,
         hospitalName, contactInfo, urgencyLevel, donationDate, donationWindow,
+        expiresAt: expiresAtRaw,
         age, reason,
     } = req.body;
 
@@ -120,7 +121,11 @@ export const createBloodRequest = asyncHandler(async (req, res) => {
     console.log(`[BloodRequest] City broadcast: ${cityUsers.length} users in "${city}" will be notified`);
 
     const donationDateObj = new Date(donationDate);
-    const expiresAt = buildExpiresAt(donationDateObj, donationWindow.startTime, donationWindow.endTime);
+    // Prefer the client-supplied expiresAt (already correct UTC from device timezone).
+    // Fall back to server-side computation only when not provided.
+    const expiresAt = expiresAtRaw
+        ? new Date(expiresAtRaw)
+        : buildExpiresAt(donationDateObj, donationWindow.startTime, donationWindow.endTime);
 
     // Donors array starts empty — users add themselves by responding Yes to the notification
     const bloodRequest = await BloodRequest.create({
@@ -400,7 +405,7 @@ export const checkActiveRequest = asyncHandler(async (req, res) => {
 
     const active = await BloodRequest.findOne({
         createdBy: userId,
-        status: { $ne: "completed" },
+        status: "in_progress",
         expiresAt: { $gt: now },
     }).select("_id patientName expiresAt status");
 
