@@ -6,7 +6,6 @@ import { responseMessages } from "../constants/responseMessages.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
-import { Donar } from "../models/donar.models.js";
 import { sendPushNotification } from "../services/notification.service.js";
 import fs from "fs";
 import mongoose from "mongoose";
@@ -21,18 +20,6 @@ const {
     DELETED_SUCCESS_MESSAGES,
     UNAUTHORIZED_REQUEST,
 } = responseMessages;
-
-function plainSubdoc(r) {
-    if (!r) return null;
-    return typeof r.toObject === "function" ? r.toObject({ flattenMaps: true }) : { ...r };
-}
-
-function getActiveDonationRequest(donarData) {
-    const list = donarData?.requests ?? [];
-    const active = list.find((r) => r.status === "in_progress" && r.donarName && String(r.donarName).trim());
-    return active ? plainSubdoc(active) : null;
-}
-
 
 // ─── PROFILE ────────────────────────────────────────────────────────────────
 
@@ -84,17 +71,14 @@ export const getProfile = asyncHandler(async (req, res) => {
 
     const user = await User.findById(userId).select("-password -otp -expiresIn");
     const userInfo = await UserInfo.findOne({ user: userId });
-    const donarData = await Donar.findOne({ user: userId });
-
-    const donationRequests = (donarData?.requests ?? []).map(plainSubdoc).filter(Boolean);
 
     return res.status(StatusCodes.OK).send(
         new ApiResponse(StatusCodes.OK, GET_SUCCESS_MESSAGES, {
             user,
             userInfo: userInfo || null,
             medicalInfo: userInfo?.medicalInfo?.diabetes ? userInfo.medicalInfo : null,
-            donationRequest: getActiveDonationRequest(donarData),
-            donationRequests,
+            donationRequest: null,
+            donationRequests: [],
         })
     );
 });
@@ -202,200 +186,6 @@ export const getMedicalInfo = asyncHandler(async (req, res) => {
         return res.status(StatusCodes.NOT_FOUND).send(new ApiError(StatusCodes.NOT_FOUND, NO_DATA_FOUND));
     }
     return res.status(StatusCodes.OK).send(new ApiResponse(StatusCodes.OK, GET_SUCCESS_MESSAGES, info));
-});
-
-
-// ─── DONATION REQUESTS ────────────────────────────────────────────────────────
-
-// @desc    Create / update donation request
-// @route   POST /api/v1/user/donarRequest
-// @access  Private
-export const donationRequest = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-
-    const requiredFields = ["donarName", "bloodGroup", "amount", "age", "date", "hospitalName", "location", "contactPersonName", "mobileNumber", "city", "startTime", "endTime", "reason"];
-    const missing = requiredFields.filter((f) => req.body[f] === undefined || req.body[f] === "");
-    if (missing.length) {
-        throw new ApiError(StatusCodes.BAD_REQUEST, `Missing fields: ${missing.join(", ")}`);
-    }
-
-    const { donarName, bloodGroup, amount, age, date, hospitalName, location, contactPersonName, mobileNumber, city, startTime, endTime, reason, donateTo } = req.body;
-
-    const donateToVal =
-        donateTo && mongoose.isValidObjectId(donateTo) ? new mongoose.Types.ObjectId(donateTo) : undefined;
-
-    const newItem = {
-        donarName,
-        bloodGroup,
-        amount,
-        age: Number(age),
-        date,
-        hospitalName,
-        location,
-        contactPersonName,
-        mobileNumber,
-        city,
-        startTime,
-        endTime,
-        reason,
-        status: "in_progress",
-    };
-    if (donateToVal) newItem.donateTo = donateToVal;
-
-    const donar = await Donar.findOneAndUpdate(
-        { user: userId },
-        { $push: { requests: newItem } },
-        { returnDocument: "after", upsert: true }
-    );
-
-    const created = (donar.requests ?? []).at(-1);
-
-    // Send push notifications to random users (up to `amount` units) — fire and forget
-    const unitsNeeded = Math.max(1, parseInt(String(amount), 10) || 1);
-    User.find({
-        _id: { $ne: userId },
-        expoPushToken: { $ne: null, $exists: true },
-    })
-        .select("_id expoPushToken")
-        .limit(unitsNeeded * 10) // over-fetch for random selection
-        .then((users) => {
-            const shuffled = users.sort(() => 0.5 - Math.random());
-            const selected = shuffled.slice(0, unitsNeeded);
-            selected.forEach((u) => {
-                if (u.expoPushToken) {
-                    sendPushNotification(
-                        u.expoPushToken,
-                        "🩸 Blood Donation Request",
-                        `${unitsNeeded} unit(s) of ${bloodGroup} blood needed urgently. Tap to view.`,
-                        { requestId: String(created._id), type: "BLOOD_REQUEST" }
-                    ).catch(() => {});
-                }
-            });
-        })
-        .catch(() => {});
-
-    return res.status(StatusCodes.OK).send(new ApiResponse(StatusCodes.OK, ADD_SUCCESS_MESSAGES, plainSubdoc(created)));
-});
-
-
-// @desc    Delete a donation request (owner only)
-// @route   DELETE /api/v1/user/requests/:id
-// @access  Private
-export const deleteRequest = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-    const requestId = req.params.id;
-
-    const donar = await Donar.findOne({ user: userId });
-    if (!donar) throw new ApiError(StatusCodes.NOT_FOUND, NO_DATA_FOUND);
-
-    const exists = donar.requests.id(requestId);
-    if (!exists) throw new ApiError(StatusCodes.NOT_FOUND, UNAUTHORIZED_REQUEST);
-
-    await Donar.findOneAndUpdate(
-        { user: userId },
-        { $pull: { requests: { _id: new mongoose.Types.ObjectId(requestId) } } }
-    );
-
-    return res.status(StatusCodes.OK).send(new ApiResponse(StatusCodes.OK, DELETED_SUCCESS_MESSAGES, null));
-});
-
-
-// @desc    Get all donation requests (for home feed)
-// @route   GET /api/v1/user/requests
-// @access  Private
-export const getAllRequests = asyncHandler(async (req, res) => {
-    const { bloodGroup, city, page = 1, limit = 20 } = req.query;
-
-    const elem = { donarName: { $exists: true, $nin: [null, ""] }, status: "in_progress" };
-    if (bloodGroup) elem.bloodGroup = bloodGroup;
-    if (city) elem.city = { $regex: city, $options: "i" };
-
-    const filter = { requests: { $elemMatch: elem } };
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const donars = await Donar.find(filter)
-        .populate({ path: "user", select: "userName email" })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .sort({ updatedAt: -1 });
-
-    const requests = donars.flatMap((d) =>
-        (d.requests ?? [])
-            .filter(
-                (r) =>
-                    r.status === "in_progress" &&
-                    r.donarName &&
-                    String(r.donarName).trim() &&
-                    (!bloodGroup || r.bloodGroup === bloodGroup) &&
-                    (!city || String(r.city ?? "").toLowerCase().includes(String(city).toLowerCase()))
-            )
-            .map((r) => ({
-                _id: r._id,
-                donarDocumentId: d._id,
-                userId: d.user,
-                status: r.status,
-                ...plainSubdoc(r),
-            }))
-    );
-
-    return res.status(StatusCodes.OK).send(new ApiResponse(StatusCodes.OK, GET_SUCCESS_MESSAGES, requests));
-});
-
-
-// @desc    Get single donation request by donor id
-// @route   GET /api/v1/user/requests/:id
-// @access  Private
-export const getRequestById = asyncHandler(async (req, res) => {
-    const paramId = req.params.id;
-
-    let donar = await Donar.findOne({ "requests._id": paramId }).populate({ path: "user", select: "userName email" });
-    let embedded = donar ? donar.requests.id(paramId) : null;
-
-    if (!embedded?.donarName) {
-        donar = await Donar.findById(paramId).populate({ path: "user", select: "userName email" });
-        if (donar) {
-            const list = donar.requests ?? [];
-            embedded =
-                list.find((r) => r.status === "in_progress" && r.donarName && String(r.donarName).trim()) ||
-                list.find((r) => r.donarName && String(r.donarName).trim()) ||
-                null;
-        }
-    }
-
-    if (!donar || !embedded?.donarName) {
-        return res.status(StatusCodes.NOT_FOUND).send(new ApiError(StatusCodes.NOT_FOUND, NO_DATA_FOUND));
-    }
-
-    const ownerId = donar.user?._id ?? donar.user;
-    const posterUserInfo = await UserInfo.findOne({ user: ownerId });
-
-    const embObj = plainSubdoc(embedded);
-
-    const medForRequest = posterUserInfo?.medicalInfo?.diabetes ? posterUserInfo.medicalInfo : null;
-
-    const result = {
-        _id: embObj._id,
-        donarDocumentId: donar._id,
-        status: embObj.status,
-        userId: donar.user,
-        posterProfile: posterUserInfo
-            ? {
-                  pic: posterUserInfo.pic || "",
-                  mobileNumber: posterUserInfo.mobileNumber,
-                  city: posterUserInfo.city,
-                  bloodGroup: posterUserInfo.bloodGroup,
-                  gender: posterUserInfo.gender,
-                  dateOfBirth: posterUserInfo.dateOfBirth,
-                  about: posterUserInfo.about,
-                  country: posterUserInfo.country,
-              }
-            : null,
-        ...embObj,
-        medicalInformation: medForRequest,
-    };
-
-    return res.status(StatusCodes.OK).send(new ApiResponse(StatusCodes.OK, GET_SUCCESS_MESSAGES, result));
 });
 
 

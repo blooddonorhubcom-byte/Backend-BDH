@@ -153,26 +153,6 @@ async function runAutoCancelJob(io) {
     }
 }
 
-// ─── JOB 3: BloodRequest Cleanup ─────────────────────────────────────────────
-// Runs daily at 02:00 AM.
-// Permanently deletes BloodRequest documents that are completed or cancelled
-// and older than 30 days, keeping the collection lean.
-async function runBloodRequestCleanupJob() {
-    try {
-        const now = new Date();
-
-        // Delete completed/cancelled requests whose donation window has already passed
-        const result = await BloodRequest.deleteMany({
-            status: { $in: ["completed", "cancelled"] },
-            expiresAt: { $lt: now },
-        });
-
-        console.log(`[BloodRequestCleanup] Deleted ${result.deletedCount} old completed/cancelled requests`);
-    } catch (err) {
-        console.error("[BloodRequestCleanup] Error:", err.message);
-    }
-}
-
 // ─── START ALL JOBS ───────────────────────────────────────────────────────────
 export function startReminderJob(io) {
     // Every 30 minutes — donation reminder
@@ -187,11 +167,5 @@ export function startReminderJob(io) {
         runAutoCancelJob(io);
     });
 
-    // Daily at 12:00 AM (midnight) — delete old completed/cancelled BloodRequest records
-    cron.schedule("0 0 * * *", () => {
-        console.log("[Jobs] Running BloodRequest cleanup…");
-        runBloodRequestCleanupJob();
-    });
-
-    console.log("[Jobs] Reminder (30 min), auto-cancel (60 min), and BloodRequest cleanup (12 AM) jobs started");
+    console.log("[Jobs] Reminder (30 min) and auto-cancel (60 min) jobs started");
 }

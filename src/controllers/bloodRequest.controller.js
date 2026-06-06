@@ -540,6 +540,8 @@ export const getMyRequests = asyncHandler(async (req, res) => {
             reason: r.reason ?? "",
             units: 1,
             totalUnits: r.requiredUnits,
+            expiresAt: r.expiresAt ?? null,
+            requestStatus: r.status,
         };
 
         // Rejected/cancelled donors are hidden — they occupied a slot but are no longer valid

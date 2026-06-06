@@ -1,7 +1,6 @@
 import { StatusCodes } from "http-status-codes";
 import { User } from "../models/user.model.js";
 import { UserInfo } from "../models/userInfo.model.js";
-import { Donar } from "../models/donar.models.js";
 import { BloodRequest } from "../models/bloodRequest.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -206,7 +205,7 @@ export const deleteUser = asyncHandler(async (req, res) => {
     // Clean up related documents
     await Promise.all([
         UserInfo.findOneAndDelete({ user: user._id }),
-        Donar.findOneAndDelete({ user: user._id }),
+        BloodRequest.deleteMany({ createdBy: user._id }),
         User.findByIdAndDelete(user._id),
     ]);
 
