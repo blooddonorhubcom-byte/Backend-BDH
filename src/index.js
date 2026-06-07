@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: "./.env" });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
 
 const socketService = new SocketService();

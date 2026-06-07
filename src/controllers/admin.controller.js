@@ -323,11 +323,6 @@ export const updateDonationRequest = asyncHandler(async (req, res) => {
         const n = Number(req.body.requiredUnits);
         if (Number.isFinite(n) && n > 0) request.requiredUnits = n;
     }
-    if (req.body.urgencyLevel !== undefined) {
-        const valid = ["low", "medium", "high", "critical"];
-        const v = String(req.body.urgencyLevel).toLowerCase();
-        if (valid.includes(v)) request.urgencyLevel = v;
-    }
     if (req.body.status !== undefined) {
         const valid = ["in_progress", "completed", "cancelled"];
         if (valid.includes(req.body.status)) request.status = req.body.status;
@@ -390,16 +385,10 @@ export const getAllDonors = asyncHandler(async (req, res) => {
 // @route   POST /api/v1/admin/blood-request
 // @access  Admin
 export const createBloodRequest = asyncHandler(async (req, res) => {
-    const { patientName, bloodGroup, location, urgencyLevel, requiredUnits, contactInfo } = req.body;
+    const { patientName, bloodGroup, location, requiredUnits, contactInfo } = req.body;
 
-    if (!patientName || !bloodGroup || !location || !urgencyLevel || !requiredUnits || !contactInfo) {
+    if (!patientName || !bloodGroup || !location || !requiredUnits || !contactInfo) {
         throw new ApiError(StatusCodes.BAD_REQUEST, MISSING_FIELDS);
-    }
-
-    const normalizedUrgency = String(urgencyLevel).toLowerCase().trim();
-    const allowedUrgency = ["low", "medium", "high", "critical"];
-    if (!allowedUrgency.includes(normalizedUrgency)) {
-        throw new ApiError(StatusCodes.BAD_REQUEST, "urgencyLevel must be one of: low, medium, high, critical");
     }
 
     const units = Number(requiredUnits);
@@ -411,7 +400,6 @@ export const createBloodRequest = asyncHandler(async (req, res) => {
         patientName: String(patientName).trim(),
         bloodGroup: String(bloodGroup).trim(),
         location: String(location).trim(),
-        urgencyLevel: normalizedUrgency,
         requiredUnits: units,
         contactInfo: String(contactInfo).trim(),
         createdBy: req.user._id,

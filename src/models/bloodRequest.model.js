@@ -27,12 +27,9 @@ const bloodRequestSchema = new mongoose.Schema(
         location: { type: String, required: true, trim: true },
         city: { type: String, required: true, trim: true },
         hospitalName: { type: String, required: true, trim: true },
-        urgencyLevel: {
-            type: String,
-            enum: ["low", "medium", "high", "critical"],
-            required: true,
-            lowercase: true,
-            trim: true,
+        isEmergency: {
+            type: Boolean,
+            default: false,
         },
         requiredUnits: { type: Number, required: true, min: 1 },
         contactInfo: { type: String, required: true, trim: true },

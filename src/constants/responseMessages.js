@@ -25,6 +25,7 @@ export const responseMessages = {
     INVALID_DATA: 'Invalid Credentials',
 
     
+    MOBILE_NUMBER_EXISTS: 'Mobile number is already registered with another account',
     MISSING_FIELDS: 'All Fields are required',
     MISSING_FIELD_EMAIL_PASSWORD: 'Email or Password is Required',
     

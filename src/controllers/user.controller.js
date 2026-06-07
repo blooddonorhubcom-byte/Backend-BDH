@@ -19,6 +19,7 @@ const {
     MISSING_FIELDS,
     DELETED_SUCCESS_MESSAGES,
     UNAUTHORIZED_REQUEST,
+    MOBILE_NUMBER_EXISTS,
 } = responseMessages;
 
 // ─── PROFILE ────────────────────────────────────────────────────────────────
@@ -39,6 +40,12 @@ export const profileSetUp = asyncHandler(async (req, res) => {
     if (!mobileNumber || !bloodGroup || !city || !dateOfBirth || !gender || canDonateBlood === undefined) {
         if (req.file?.path) fs.unlinkSync(req.file.path);
         throw new ApiError(StatusCodes.BAD_REQUEST, MISSING_FIELDS);
+    }
+
+    const numberTaken = await UserInfo.findOne({ mobileNumber, user: { $ne: userId } });
+    if (numberTaken) {
+        if (req.file?.path) fs.unlinkSync(req.file.path);
+        throw new ApiError(StatusCodes.CONFLICT, MOBILE_NUMBER_EXISTS);
     }
 
     let picUrl = "";
@@ -95,6 +102,11 @@ export const changeNumber = asyncHandler(async (req, res) => {
         throw new ApiError(StatusCodes.BAD_REQUEST, MISSING_FIELDS);
     }
 
+    const numberTaken = await UserInfo.findOne({ mobileNumber, user: { $ne: userId } });
+    if (numberTaken) {
+        throw new ApiError(StatusCodes.CONFLICT, MOBILE_NUMBER_EXISTS);
+    }
+
     const profile = await UserInfo.findOneAndUpdate(
         { user: userId },
         { $set: { mobileNumber } },
@@ -134,6 +146,13 @@ export const updateProfile = asyncHandler(async (req, res) => {
 
     if (Object.keys(updates).length === 0 && !req.file) {
         throw new ApiError(StatusCodes.BAD_REQUEST, "No fields to update");
+    }
+
+    if (updates.mobileNumber) {
+        const numberTaken = await UserInfo.findOne({ mobileNumber: updates.mobileNumber, user: { $ne: userId } });
+        if (numberTaken) {
+            throw new ApiError(StatusCodes.CONFLICT, MOBILE_NUMBER_EXISTS);
+        }
     }
 
     const profile = await UserInfo.findOneAndUpdate(
@@ -328,5 +347,3 @@ export const getDonors = asyncHandler(async (req, res) => {
 
     return res.status(StatusCodes.OK).send(new ApiResponse(StatusCodes.OK, GET_SUCCESS_MESSAGES, donors));
 });
-
-

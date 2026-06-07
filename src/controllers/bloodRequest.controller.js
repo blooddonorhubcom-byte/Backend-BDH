@@ -78,12 +78,13 @@ export const createBloodRequest = asyncHandler(async (req, res) => {
 
     const {
         patientName, bloodGroup, requiredUnits, location, city,
-        hospitalName, contactInfo, urgencyLevel, donationDate, donationWindow,
+        hospitalName, contactInfo, donationDate, donationWindow,
         expiresAt: expiresAtRaw,
+        isEmergency,
         age, reason,
     } = req.body;
 
-    const requiredFields = ["patientName", "bloodGroup", "requiredUnits", "location", "city", "hospitalName", "contactInfo", "urgencyLevel", "donationDate", "donationWindow"];
+    const requiredFields = ["patientName", "bloodGroup", "requiredUnits", "location", "city", "hospitalName", "contactInfo", "donationDate", "donationWindow"];
     const missing = requiredFields.filter((f) => req.body[f] === undefined || req.body[f] === "");
     if (missing.length) {
         throw new ApiError(StatusCodes.BAD_REQUEST, `Missing fields: ${missing.join(", ")}`);
@@ -136,7 +137,7 @@ export const createBloodRequest = asyncHandler(async (req, res) => {
         city,
         hospitalName,
         contactInfo,
-        urgencyLevel: String(urgencyLevel).toLowerCase(),
+        isEmergency: isEmergency === true || isEmergency === "true",
         donationDate: donationDateObj,
         donationWindow: {
             startTime: donationWindow.startTime,
@@ -536,7 +537,7 @@ export const getMyRequests = asyncHandler(async (req, res) => {
             hospitalName: r.hospitalName,
             location: r.location,
             donationDate: r.donationDate,
-            urgencyLevel: r.urgencyLevel,
+            isEmergency: r.isEmergency ?? false,
             reason: r.reason ?? "",
             units: 1,
             totalUnits: r.requiredUnits,
@@ -615,7 +616,7 @@ export const getMyAssignments = asyncHandler(async (req, res) => {
             location: r.location,
             donationDate: r.donationDate,
             donationWindow: r.donationWindow,
-            urgencyLevel: r.urgencyLevel,
+            isEmergency: r.isEmergency ?? false,
             units: 1,
             status: mapDonorStatus(donorEntry.status),
             donorStatus: donorEntry.status,
@@ -649,7 +650,7 @@ export const getAssignedBloodRequests = asyncHandler(async (req, res) => {
             location: r.location,
             donationDate: r.donationDate,
             donationWindow: r.donationWindow,
-            urgencyLevel: r.urgencyLevel,
+            isEmergency: r.isEmergency ?? false,
             donorStatus: donorEntry?.status ?? "pending",
         };
     });
@@ -698,7 +699,7 @@ export const getBloodRequestFeed = asyncHandler(async (req, res) => {
         location: r.location,
         date: r.donationDate ? r.donationDate.toISOString().split("T")[0] : "",
         reason: r.reason ?? "",
-        urgencyLevel: r.urgencyLevel,
+        isEmergency: r.isEmergency ?? false,
         userId: r.createdBy,
         source: "bloodRequest",
         status: r.status,
